@@ -7,7 +7,7 @@
 #include <iostream>
 
 long thread_count;
-volatile unsigned long long total_number_in_circle;
+unsigned long long total_number_in_circle;
 unsigned long long thread_toss_num;
 pthread_mutex_t mutex;
 
@@ -34,8 +34,6 @@ void* Thread_toss(void* tn){
     total_number_in_circle += number_in_circle;
     pthread_mutex_unlock(&mutex);
 
-    std::cout << "total: " << total_number_in_circle << std::endl;
-
     return NULL;
 }
 
@@ -58,7 +56,7 @@ int main(int argc, char **argv)
     thread_count = number_of_cpu;
     thread_handles = (pthread_t*) malloc(thread_count*sizeof(pthread_t)); 
     pthread_mutex_init(&mutex,  NULL);
-    unsigned long long total_number_in_circle = 0;
+    total_number_in_circle = 0;
     thread_toss_num = floor(number_of_tosses / number_of_cpu);
 
     for (thread = 0; thread < thread_count; thread++) {
@@ -72,11 +70,7 @@ int main(int argc, char **argv)
     pthread_mutex_destroy(&mutex);
     free(thread_handles);
 
-    std::cout << "total(main): " << total_number_in_circle << std::endl;
-
     double pi_estimate = 4*total_number_in_circle/((double) number_of_tosses);
-
-    
     
     printf("%f\n",pi_estimate);
     return 0;
