@@ -10,8 +10,7 @@
 
 #define XOR64MAX 18446744073709551615
 #define XOR32MAX 4294967295
-#define MAXDIAMETER 9223372036854775807
-#define MAXRADIUS 18446744065119617025
+#define MAXRADIUS 18446744065119617025;
 
 long thread_count;
 unsigned long long total_number_in_circle;
@@ -42,23 +41,17 @@ void* Thread_toss(void* tn){
     std::default_random_engine generator(rd());
     std::uniform_real_distribution<float> unif(-1.0, 1.0);
     
-    uint32_t state_1 = generator();
-    uint32_t state_2 = generator();
-    
     for (toss = 0; toss < thread_toss_num; toss++) {        
         
         // x, y = random double between -1 and 1;
         double x, y, distance_squared;
 
-        state_1 = xorshift32(state_1);
-        state_2 = xorshift32(state_2);
-
-        x = (double) state_1;
-        y = (double) state_2;
+        x = unif(generator);
+        y = unif(generator);
         
         distance_squared = x*x + y*y;
 
-        if (distance_squared <= MAXRADIUS)
+        if (distance_squared <= 1)
             number_in_circle++;
     }
 
