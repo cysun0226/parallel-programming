@@ -331,6 +331,15 @@ static void conj_grad(int colidx[],
     rho = rho + r[j]*r[j];
   }
 
+  // omp var
+    int NUM_THREADS = omp_get_num_procs();
+    omp_set_num_threads(NUM_THREADS);
+    double self_sum[NUM_THREADS];
+    int row_divide[NUM_THREADS];
+    for (size_t i = 0; i < NUM_THREADS; i++){
+      row_divide[i] = ((lastrow-firstrow+1)/NUM_THREADS)*(i+1);
+    } 
+
   //---------------------------------------------------------------------
   //---->
   // The conj grad iteration loop
@@ -349,14 +358,7 @@ static void conj_grad(int colidx[],
     //       The unrolled-by-8 version below is significantly faster
     //       on the Cray t3d - overall speed of code is 1.5 times faster.
     
-    // omp var
-    int NUM_THREADS = omp_get_num_procs();
-    omp_set_num_threads(NUM_THREADS);
-    double self_sum[NUM_THREADS];
-    int row_divide[NUM_THREADS];
-    for (size_t i = 0; i < NUM_THREADS; i++){
-      row_divide[i] = ((lastrow-firstrow+1)/NUM_THREADS)*(i+1);
-    }    
+    
     
     #pragma omp parallel
     {
@@ -408,17 +410,40 @@ static void conj_grad(int colidx[],
     // and    r = r - alpha*q
     //---------------------------------------------------------------------
     rho = 0.0;
-    for (j = 0; j < lastcol - firstcol + 1; j++) {
-      z[j] = z[j] + alpha*p[j];  
-      r[j] = r[j] - alpha*q[j];
+
+    omp_set_num_threads(NUM_THREADS);
+    #pragma omp parallel
+    {
+      int id = omp_get_thread_num();
+      for (j = row_divide[id]-row_divide[0]; j < row_divide[id]; j++) {
+        z[j] = z[j] + alpha*p[j];  
+        r[j] = r[j] - alpha*q[j];
+      }
+      // for (j = 0; j < lastcol - firstcol + 1; j++) {
+      //   z[j] = z[j] + alpha*p[j];  
+      //   r[j] = r[j] - alpha*q[j];
+      // }
     }
+    
             
     //---------------------------------------------------------------------
     // rho = r.r
     // Now, obtain the norm of r: First, sum squares of r elements locally...
     //---------------------------------------------------------------------
+    // omp_set_num_threads(NUM_THREADS);
+    // #pragma omp parallel
+    // {
+    //   int id = omp_get_thread_num();
+    //   for (j = row_divide[id]-row_divide[0]; j < row_divide[id]; j++) {
+    //     rho = rho + r[j]*r[j];
+    //   }
+    //   // for (j = 0; j < lastcol - firstcol + 1; j++) {
+    //   //   rho = rho + r[j]*r[j];
+    //   // }
+    // }
+
     for (j = 0; j < lastcol - firstcol + 1; j++) {
-      rho = rho + r[j]*r[j];
+        rho = rho + r[j]*r[j];
     }
 
     //---------------------------------------------------------------------
@@ -429,8 +454,16 @@ static void conj_grad(int colidx[],
     //---------------------------------------------------------------------
     // p = r + beta*p
     //---------------------------------------------------------------------
-    for (j = 0; j < lastcol - firstcol + 1; j++) {
-      p[j] = r[j] + beta*p[j];
+    omp_set_num_threads(NUM_THREADS);
+    #pragma omp parallel
+    {
+      int id = omp_get_thread_num();
+      for (j = row_divide[id]-row_divide[0]; j < row_divide[id]; j++) {
+        p[j] = r[j] + beta*p[j];
+      }
+      // for (j = 0; j < lastcol - firstcol + 1; j++) {
+      //   p[j] = r[j] + beta*p[j];
+      // }
     }
   } // end of do cgit=1,cgitmax
 
@@ -440,13 +473,29 @@ static void conj_grad(int colidx[],
   // The partition submatrix-vector multiply
   //---------------------------------------------------------------------
   sum = 0.0;
-  for (j = 0; j < lastrow - firstrow + 1; j++) {
-    d = 0.0;
-    for (k = rowstr[j]; k < rowstr[j+1]; k++) {
-      d = d + a[k]*z[colidx[k]];
+  
+  omp_set_num_threads(NUM_THREADS);
+  #pragma omp parallel
+  {
+    int id = omp_get_thread_num();
+    for (j = row_divide[id]-row_divide[0]; j < row_divide[id]; j++) {
+        double my_d = 0.0;
+        for (k = rowstr[j]; k < rowstr[j+1]; k++) {
+          my_d = my_d + a[k]*z[colidx[k]];
+        }
+        r[j] = my_d;
     }
-    r[j] = d;
+    
+    // for (j = 0; j < lastrow - firstrow + 1; j++) {
+    //   d = 0.0;
+    //   for (k = rowstr[j]; k < rowstr[j+1]; k++) {
+    //     d = d + a[k]*z[colidx[k]];
+    //   }
+    //   r[j] = d;
+    // }
   }
+
+  
 
   //---------------------------------------------------------------------
   // At this point, r contains A.z
