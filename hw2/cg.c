@@ -444,27 +444,27 @@ static void conj_grad(int colidx[],
     // rho = r.r
     // Now, obtain the norm of r: First, sum squares of r elements locally...
     //---------------------------------------------------------------------
-    // omp_set_num_threads(NUM_THREADS);
-    // float local_rho[NUM_THREADS];
-    // #pragma omp parallel
-    // {
-    //   int id = omp_get_thread_num();
-    //   for (j = col_divide[id]-col_divide[0]; j < col_divide[id]; j++) {
-    //     local_rho[id] = local_rho[id] + r[j]*r[j];
-    //   }
-    //   // for (j = 0; j < lastcol - firstcol + 1; j++) {
-    //   //   rho = rho + r[j]*r[j];
-    //   // }
-    // }
+    omp_set_num_threads(NUM_THREADS);
+    float local_rho[NUM_THREADS];
+    #pragma omp parallel
+    {
+      int id = omp_get_thread_num();
+      for (int j = col_divide[id]-col_divide[0]; j < col_divide[id]; j++) {
+        local_rho[id] = local_rho[id] + r[j]*r[j];
+      }
+      // for (j = 0; j < lastcol - firstcol + 1; j++) {
+      //   rho = rho + r[j]*r[j];
+      // }
+    }
 
-    // for (size_t i = 0; i < NUM_THREADS; i++) {
-    //   rho = rho + local_rho[i];
-    // }
+    for (size_t i = 0; i < NUM_THREADS; i++) {
+      rho = rho + local_rho[i];
+    }
     
 
-    for (int j = 0; j < lastcol - firstcol + 1; j++) {
-        rho = rho + r[j]*r[j];
-    }
+    // for (int j = 0; j < lastcol - firstcol + 1; j++) {
+    //     rho = rho + r[j]*r[j];
+    // }
 
     //---------------------------------------------------------------------
     // Obtain beta:
