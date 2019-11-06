@@ -310,25 +310,7 @@ static void conj_grad(int colidx[],
   int cgit, cgitmax = 25;
   double d, sum, rho, rho0, alpha, beta;
 
-  rho = 0.0;
-
-  //---------------------------------------------------------------------
-  // Initialize the CG algorithm:
-  //---------------------------------------------------------------------
-  for (int j = 0; j < naa+1; j++) {
-    q[j] = 0.0;
-    z[j] = 0.0;
-    r[j] = x[j];
-    p[j] = r[j];
-  }
-
-  //---------------------------------------------------------------------
-  // rho = r.r
-  // Now, obtain the norm of r: First, sum squares of r elements locally...
-  //---------------------------------------------------------------------
-  for (int j = 0; j < lastcol - firstcol + 1; j++) {
-    rho = rho + r[j]*r[j];
-  }
+  
 
   //---------------------------------------------------------------------
   // omp var
@@ -336,9 +318,60 @@ static void conj_grad(int colidx[],
     int NUM_THREADS = omp_get_num_procs();
     omp_set_num_threads(NUM_THREADS);
     int col_divide[NUM_THREADS];
+    int naa_divide[NUM_THREADS];
     for (size_t i = 0; i < NUM_THREADS; i++){
       col_divide[i] = ((lastrow-firstrow+1)/NUM_THREADS)*(i+1);
+      naa_divide[i] = ((naa+1)/NUM_THREADS)*(i+1);
     } 
+
+  //---------------------------------------------------------------------
+  // Initialize the CG algorithm:
+  //---------------------------------------------------------------------
+   #pragma omp parallel
+    {
+      int id = omp_get_thread_num();
+
+      for (int j = naa_divide[id]-naa_divide[0]; j < naa_divide[id]; j++) {
+        q[j] = 0.0;
+        z[j] = 0.0;
+        r[j] = x[j];
+        p[j] = r[j];    
+      }
+   
+      // for (int j = 0; j < naa+1; j++) {
+      //   q[j] = 0.0;
+      //   z[j] = 0.0;
+      //   r[j] = x[j];
+      //   p[j] = r[j];
+      // }
+    }
+
+  //---------------------------------------------------------------------
+  // rho = r.r
+  // Now, obtain the norm of r: First, sum squares of r elements locally...
+  //---------------------------------------------------------------------
+  rho = 0.0;
+
+    float local_rho[NUM_THREADS];
+    #pragma omp parallel
+    {
+      int id = omp_get_thread_num();
+      for (int j = col_divide[id]-col_divide[0]; j < col_divide[id]; j++) {
+        local_rho[id] = local_rho[id] + r[j]*r[j];
+      }
+      // for (j = 0; j < lastcol - firstcol + 1; j++) {
+      //   rho = rho + r[j]*r[j];
+      // }
+    }
+
+    for (size_t i = 0; i < NUM_THREADS; i++) {
+      rho = rho + local_rho[i];
+    }
+  
+  // for (int j = 0; j < lastcol - firstcol + 1; j++) {
+  //   rho = rho + r[j]*r[j];
+  // }
+  
 
   //---------------------------------------------------------------------
   //---->
