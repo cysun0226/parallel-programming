@@ -5,8 +5,8 @@ CC = gcc
 CLINK	= $(CC)
 C_LIB  = -lm
 C_INC = -Icommon
-CFLAGS	= -g -O3 -mcmodel=medium -fopenmp -pg
-CLINKFLAGS = -O3 -mcmodel=medium -fopenmp -pg
+CFLAGS	= -g -O3 -mcmodel=medium -fopenmp
+CLINKFLAGS = -O3 -mcmodel=medium -fopenmp
 UCC	= gcc
 BINDIR	= bin
 RAND   = randdp
