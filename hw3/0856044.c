@@ -1,6 +1,7 @@
 // #include "mpi.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 
 #define CPU_NUM 4
 
@@ -26,6 +27,9 @@ int main(int argc, char **argv) {
   float d = (float) random() / RAND_MAX * 0.2;  // Diffusivity
   int *temp = malloc(L*W*sizeof(int));          // Current temperature
   int *next = malloc(L*W*sizeof(int));          // Next time step
+
+  clock_t begin = clock();
+
 
   // ----------------------------------------------------------------------------
   // MPI_Init(&argc,&argv);
@@ -97,9 +101,10 @@ int main(int argc, char **argv) {
       }
     }
     */
+   int random_idx[] = {3, 1, 0, 2};
    for (size_t r = 0; r < CPU_NUM; r++)
    {
-     for (int i = range[r].low; i < range[r].up; i++) {
+     for (int i = range[random_idx[r]].low; i < range[random_idx[r]].up; i++) {
       for (int j = 0; j < W; j++) {
         float t = temp[i*W+j] / d; 
         // t = temp[i][j] / d
@@ -156,12 +161,15 @@ int main(int argc, char **argv) {
   }
   
 
-  
+  clock_t end = clock();  
 
   // exit MPI
   // MPI_Finalize();
 
   printf("Size: %d*%d, Iteration: %d, Min Temp: %d\n", L, W, count, min);
+
+  double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
+  printf("time: %4f sec\n", time_spent);
   return 0;
 }
 

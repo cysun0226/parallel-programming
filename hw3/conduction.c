@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 #ifndef W
 #define W 20                                    // Width
 #endif
@@ -10,6 +11,8 @@ int main(int argc, char **argv) {
   float d = (float) random() / RAND_MAX * 0.2;  // Diffusivity
   int *temp = malloc(L*W*sizeof(int));          // Current temperature
   int *next = malloc(L*W*sizeof(int));          // Next time step
+
+  clock_t begin = clock();
 
   for (int i = 0; i < L; i++) {
     for (int j = 0; j < W; j++) {
@@ -50,7 +53,10 @@ int main(int argc, char **argv) {
       }
     }
   }
+  clock_t end = clock();  
   printf("Size: %d*%d, Iteration: %d, Min Temp: %d\n", L, W, count, min);
+  double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
+  printf("time: %4f sec\n", time_spent);
   return 0;
 }
 
