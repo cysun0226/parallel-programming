@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <unistd.h>
 
 #ifndef W
 #define W 20                                    // Width
@@ -40,7 +41,6 @@ int main(int argc, char **argv) {
   int rank, size;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &size);
-  printf("Hello world from rank %d out of %d processors\n", rank, size);
 
   int interval = L / size;
   Range range[size];
@@ -136,24 +136,25 @@ int main(int argc, char **argv) {
         */
 
         // send boundary
-        printf("exchange boundary\n");
         if(rank == MAIN_RANK){
           MPI_Request req_t, req_b, req_s_t, req_s_b;
-          MPI_Isend(&temp[(range[rank].up-1)*W], W, MPI_INT, rank+1, rank*100+(rank+1), MPI_COMM_WORLD, &req_s_t);
+          MPI_Isend(&next[(range[rank].up-1)*W], W, MPI_INT, rank+1, rank*100+(rank+1), MPI_COMM_WORLD, &req_s_t);
           MPI_Irecv(top, W, MPI_INT, rank+1, (rank+1)*100+rank, MPI_COMM_WORLD, &req_t);
           MPI_Wait(&req_t, &status);
-          for (size_t i = 0; i < count; i++){
-            temp[(range[rank].up)*W + i] = top[i];
+
+          for (size_t i = 0; i < W; i++){
+            next[(range[rank].up)*W + i] = top[i];
           }
         }
 
         if(rank == size-1){
           MPI_Request req_t, req_b, req_s_t, req_s_b;
-          MPI_Isend(&temp[range[rank].low*W], W, MPI_INT, rank-1, rank*100+(rank-1), MPI_COMM_WORLD, &req_s_b);
+          MPI_Isend(&next[range[rank].low*W], W, MPI_INT, rank-1, rank*100+(rank-1), MPI_COMM_WORLD, &req_s_b);
           MPI_Irecv(bottom, W, MPI_INT, rank-1, (rank-1)*100+rank, MPI_COMM_WORLD, &req_b);
           MPI_Wait(&req_b, &status);
-          for (size_t i = 0; i < count; i++){
-            temp[(range[rank].up)*W + i] = bottom[i];
+          
+          for (size_t i = 0; i < W; i++){
+            next[(range[rank].low-1)*W + i] = bottom[i];
           }
         }
 
@@ -161,43 +162,58 @@ int main(int argc, char **argv) {
         if (rank != size-1 && rank != MAIN_RANK){
           // send the bottom row
           MPI_Request req_t, req_b, req_s_t, req_s_b;
-          MPI_Isend(&temp[(range[rank].up-1)*W], W, MPI_INT, rank+1, rank*100+(rank+1), MPI_COMM_WORLD, &req_s_t);
-          printf("I'm %d, send id = %d\n", rank, rank*100+(rank+1));
-          MPI_Isend(&temp[range[rank].low*W], W, MPI_INT, rank-1, rank*100+(rank-1), MPI_COMM_WORLD, &req_s_b);
-          printf("I'm %d, send id = %d\n", rank, rank*100+(rank-1));
+
+          MPI_Isend(&next[(range[rank].up-1)*W], W, MPI_INT, rank+1, rank*100+(rank+1), MPI_COMM_WORLD, &req_s_t);
+          MPI_Isend(&next[range[rank].low*W], W, MPI_INT, rank-1, rank*100+(rank-1), MPI_COMM_WORLD, &req_s_b);
           MPI_Irecv(bottom, W, MPI_INT, rank-1, (rank-1)*100+rank, MPI_COMM_WORLD, &req_b);
-          printf("I'm %d, recv id = %d\n", rank, (rank-1)*100+rank);
           MPI_Irecv(top, W, MPI_INT, rank+1, (rank+1)*100+rank, MPI_COMM_WORLD, &req_t);
-          printf("I'm %d, recv id = %d\n", rank, (rank+1)*100+rank);
+
           MPI_Wait(&req_t, &status);
           MPI_Wait(&req_b, &status);
 
           // update temp according to the received data
-          for (size_t i = 0; i < count; i++){
-            temp[(range[rank].low-1)*W + i] = bottom[i];
-            temp[(range[rank].up)*W + i] = top[i];
+          for (size_t i = 0; i < W; i++){
+            next[(range[rank].low-1)*W + i] = bottom[i];
+            next[(range[rank].up)*W + i] = top[i];
           }
         }
     
     int *tmp = temp;
     temp = next;
     next = tmp;
+
+    // MPI_Barrier(MPI_COMM_WORLD);
   }
 
   int min = temp[0];
   int tag = 0;
-
-  // find min
-  if (rank == MAIN_RANK){
-    for (int i = 0; i < L; i++) {
-      for (int j = 0; j < W; j++) {
-        if (temp[i*W+j] < min) {
-          min = temp[i*W+j];
-        }
+  for (int i = range[rank].low; i < range[rank].up; i++) {
+    for (int j = 0; j < W; j++) {
+      if (temp[i*W+j] < min) {
+        min = temp[i*W+j];
       }
     }
+  }
+
+  // find min
+  MPI_Status status;
+  int global_min = min;
+  if (rank == MAIN_RANK){ // master
+    for (size_t i = 1; i < size; i++){
+      int part_min;
+      MPI_Recv(&part_min, 1, MPI_INT, i, tag, MPI_COMM_WORLD, &status);
+      if(part_min < global_min){
+        global_min = part_min;
+      }
+    }
+  }
+  else{ // worker
+    MPI_Send(&min, 1, MPI_INT, MAIN_RANK, tag, MPI_COMM_WORLD);
+  }
+  
+  if (rank == MAIN_RANK){
     clock_t end = clock();  
-    printf("Size: %d*%d, Iteration: %d, Min Temp: %d\n", L, W, count, min);
+    printf("Size: %d*%d, Iteration: %d, Min Temp: %d\n", L, W, count, global_min);
     double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
     printf("time: %4f sec\n", time_spent);
   }
