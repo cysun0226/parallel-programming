@@ -58,7 +58,7 @@ void* Thread_toss(void* tn){
         
         distance_squared = x*x + y*y;
 
-        if (distance_squared <= MAXRADIUS)
+        if (distance_squared <= (double)MAXRADIUS)
             number_in_circle++;
     }
 
@@ -110,9 +110,9 @@ int main(int argc, char **argv)
     printf("%f\n",pi_estimate);
     
     // Record end time
-    auto finish = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = finish - start;
-    std::cout << "exec time = " << elapsed.count() << " s" << std::endl;
+    // auto finish = std::chrono::high_resolution_clock::now();
+    // std::chrono::duration<double> elapsed = finish - start;
+    // std::cout << "exec time = " << elapsed.count() << " s" << std::endl;
 
     return 0;
 }
