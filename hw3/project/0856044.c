@@ -42,6 +42,7 @@ int main(int argc, char **argv) {
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &size);
 
+
   int interval = L / size;
   Range range[size];
   for (size_t i = 0; i < size; i++){
@@ -95,7 +96,7 @@ int main(int argc, char **argv) {
 
    // report balance to master
         MPI_Status status;
-        int global_balance = 1;
+        int global_balance = balance;
         int tag = 0;
         if (rank == 0){ // master
           for (size_t i = 1; i < size; i++){
@@ -136,7 +137,7 @@ int main(int argc, char **argv) {
         */
 
         // send boundary
-        if(rank == MAIN_RANK){
+        if(rank == MAIN_RANK && size >1){
           MPI_Request req_t, req_b, req_s_t, req_s_b;
           MPI_Isend(&next[(range[rank].up-1)*W], W, MPI_INT, rank+1, rank*100+(rank+1), MPI_COMM_WORLD, &req_s_t);
           MPI_Irecv(top, W, MPI_INT, rank+1, (rank+1)*100+rank, MPI_COMM_WORLD, &req_t);
@@ -147,7 +148,7 @@ int main(int argc, char **argv) {
           }
         }
 
-        if(rank == size-1){
+        if(rank == size-1  && size >1){
           MPI_Request req_t, req_b, req_s_t, req_s_b;
           MPI_Isend(&next[range[rank].low*W], W, MPI_INT, rank-1, rank*100+(rank-1), MPI_COMM_WORLD, &req_s_b);
           MPI_Irecv(bottom, W, MPI_INT, rank-1, (rank-1)*100+rank, MPI_COMM_WORLD, &req_b);
@@ -159,7 +160,7 @@ int main(int argc, char **argv) {
         }
 
 
-        if (rank != size-1 && rank != MAIN_RANK){
+        if (rank != size-1 && rank != MAIN_RANK && size >1){
           // send the bottom row
           MPI_Request req_t, req_b, req_s_t, req_s_b;
 
@@ -177,15 +178,29 @@ int main(int argc, char **argv) {
             next[(range[rank].up)*W + i] = top[i];
           }
         }
+
+
+    // print the temp array
+    /*
+    if (rank == 1){
+    printf("\n === iter %d === \n", iteration);
+    for (size_t i = 0; i < L; i++){
+      for (size_t j = 0; j < W; j++){
+        printf("%d ", next[i*W+j]);
+      }
+      printf("\n");
+    }
+    }
+    */
     
     int *tmp = temp;
     temp = next;
     next = tmp;
 
-    // MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Barrier(MPI_COMM_WORLD);
   }
 
-  int min = temp[0];
+  int min = temp[range[rank].low*W];
   int tag = 0;
   for (int i = range[rank].low; i < range[rank].up; i++) {
     for (int j = 0; j < W; j++) {
@@ -194,6 +209,8 @@ int main(int argc, char **argv) {
       }
     }
   }
+
+  MPI_Barrier(MPI_COMM_WORLD);
 
   // find min
   MPI_Status status;
