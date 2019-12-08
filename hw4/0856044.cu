@@ -81,7 +81,23 @@ void init_line(void)
 /**********************************************************************
  *      Calculate new values using wave equation
  *********************************************************************/
-void do_math(int i)
+// cuda version
+
+__global__ void DoMath()
+{
+   float dtime, c, dx, tau, sqtau;
+   int i = threadIdx.x;
+
+   dtime = 0.3;
+   c = 1.0;
+   dx = 1.0;
+   tau = (c * dtime / dx);
+   sqtau = tau * tau;
+   newval[i] = (2.0 * values[i]) - oldval[i] + (sqtau *  (-2.0)*values[i]);
+}
+
+
+ void do_math(int i)
 {
    float dtime, c, dx, tau, sqtau;
 
@@ -100,16 +116,33 @@ void update()
 {
    int i, j;
 
+   // load data to device memory
+   float *dev_values, *dev_oldval, *dev_newval;
+   cudaMalloc(&dev_values, MAXPOINTS+2);
+   cudaMemcpy(dev_values, values, MAXPOINTS+2)
+   cudaMalloc(&dev_oldval, MAXPOINTS+2);
+   cudaMemcpy(dev_oldval, oldval, MAXPOINTS+2)
+   cudaMalloc(&dev_newval, MAXPOINTS+2);
+   cudaMemcpy(dev_newval, newval, MAXPOINTS+2)
+
+
    /* Update values for each time step */
    for (i = 1; i<= nsteps; i++) {
       /* Update points along line for this time step */
-      for (j = 1; j <= tpoints; j++) {
-         /* global endpoints */
-         if ((j == 1) || (j  == tpoints))
-            newval[j] = 0.0;
-         else
-            do_math(j);
-      }
+      // if ((j == 1) || (j  == tpoints))
+      newval[1] = 0.0;
+      newval[tpoints] = 0.0;
+
+      DoMath<<<1,tpoints>>>();
+
+      // for (j = 1; j <= tpoints; j++) {
+      //    /* global endpoints */
+      //    if ((j == 1) || (j  == tpoints))
+      //       newval[j] = 0.0;
+      //    else
+      //       do_math(j);
+      // }
+      
 
       /* Update old values with new values */
       for (j = 1; j <= tpoints; j++) {
