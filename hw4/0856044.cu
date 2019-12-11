@@ -25,6 +25,7 @@ float  values[MAXPOINTS+2], 	/* values at time t */
        oldval[MAXPOINTS+2], 	/* values at time (t-dt) */
        newval[MAXPOINTS+2]; 	/* values at time (t+dt) */
 
+float *dev_values, *dev_oldval, *dev_newval;
 
 /**********************************************************************
  *	Checks input values from parameters
@@ -96,6 +97,13 @@ __global__ void DoMath()
    newval[i] = (2.0 * values[i]) - oldval[i] + (sqtau *  (-2.0)*values[i]);
 }
 
+__global__ void UpdateOldVal()
+{
+   int i = threadIdx.x;
+   oldval[i] = values[i];
+   values[i] = newval[i];
+}
+
 
  void do_math(int i)
 {
@@ -117,7 +125,6 @@ void update()
    int i, j;
 
    // load data to device memory
-   float *dev_values, *dev_oldval, *dev_newval;
    cudaMalloc(&dev_values, MAXPOINTS+2);
    cudaMemcpy(dev_values, values, MAXPOINTS+2)
    cudaMalloc(&dev_oldval, MAXPOINTS+2);
@@ -133,7 +140,7 @@ void update()
       newval[1] = 0.0;
       newval[tpoints] = 0.0;
 
-      DoMath<<<1,tpoints>>>();
+      DoMath<<<2,tpoints>>>();
 
       // for (j = 1; j <= tpoints; j++) {
       //    /* global endpoints */
@@ -145,10 +152,11 @@ void update()
       
 
       /* Update old values with new values */
-      for (j = 1; j <= tpoints; j++) {
-         oldval[j] = values[j];
-         values[j] = newval[j];
-      }
+      // for (j = 1; j <= tpoints; j++) {
+      //    oldval[j] = values[j];
+      //    values[j] = newval[j];
+      // }
+      UpdateOldVal<<<1,tpoints>>>
    }
 }
 
