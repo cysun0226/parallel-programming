@@ -84,7 +84,7 @@ void init_line(void)
  *********************************************************************/
 // cuda version
 
-__global__ void DoMath()
+__global__ void DoMath(float* dev_newval, float* dev_oldval, float* dev_values)
 {
    float dtime, c, dx, tau, sqtau;
    int i = threadIdx.x;
@@ -97,7 +97,7 @@ __global__ void DoMath()
    dev_newval[i] = (2.0 * dev_values[i]) - dev_oldval[i] + (sqtau *  (-2.0)*dev_values[i]);
 }
 
-__global__ void UpdateOldVal()
+__global__ void UpdateOldVal(float* dev_newval, float* dev_oldval, float* dev_values)
 {
    int i = threadIdx.x;
    dev_oldval[i] = dev_values[i];
@@ -140,7 +140,7 @@ void update()
       newval[1] = 0.0;
       newval[tpoints] = 0.0;
 
-      DoMath<<<2,tpoints>>>();
+      DoMath<<<2,tpoints>>>(dev_newval, dev_oldval, dev_values);
 
       // for (j = 1; j <= tpoints; j++) {
       //    /* global endpoints */
@@ -156,7 +156,7 @@ void update()
       //    oldval[j] = values[j];
       //    values[j] = newval[j];
       // }
-      UpdateOldVal<<<1,tpoints>>>
+      UpdateOldVal<<<1,tpoints>>>(dev_newval, dev_oldval, dev_values);
    }
 
    // load data from GPU
