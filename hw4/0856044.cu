@@ -122,15 +122,15 @@ __global__ void UpdateOldVal(float* dev_newval, float* dev_oldval, float* dev_va
  *********************************************************************/
 void update()
 {
-   int i, j;
+   int i;
 
    // load data to device memory
    cudaMalloc(&dev_values, MAXPOINTS+2);
-   cudaMemcpy(dev_values, values, MAXPOINTS+2)
+   cudaMemcpy(dev_values, values, MAXPOINTS+2, cudaMemcpyHostToDevice);
    cudaMalloc(&dev_oldval, MAXPOINTS+2);
-   cudaMemcpy(dev_oldval, oldval, MAXPOINTS+2)
+   cudaMemcpy(dev_oldval, oldval, MAXPOINTS+2, cudaMemcpyHostToDevice);
    cudaMalloc(&dev_newval, MAXPOINTS+2);
-   cudaMemcpy(dev_newval, newval, MAXPOINTS+2)
+   cudaMemcpy(dev_newval, newval, MAXPOINTS+2, cudaMemcpyHostToDevice);
 
 
    /* Update values for each time step */
@@ -160,7 +160,7 @@ void update()
    }
 
    // load data from GPU
-   cudaMemcpy(values, dev_values, MAXPOINTS+2)
+   cudaMemcpy(values, dev_values, MAXPOINTS+2, cudaMemcpyDeviceToHost);
    cudaFree(dev_newval);
    cudaFree(dev_oldval);
    cudaFree(dev_values);
