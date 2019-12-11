@@ -94,14 +94,14 @@ __global__ void DoMath()
    dx = 1.0;
    tau = (c * dtime / dx);
    sqtau = tau * tau;
-   newval[i] = (2.0 * values[i]) - oldval[i] + (sqtau *  (-2.0)*values[i]);
+   dev_newval[i] = (2.0 * dev_values[i]) - dev_oldval[i] + (sqtau *  (-2.0)*dev_values[i]);
 }
 
 __global__ void UpdateOldVal()
 {
    int i = threadIdx.x;
-   oldval[i] = values[i];
-   values[i] = newval[i];
+   dev_oldval[i] = dev_values[i];
+   dev_values[i] = dev_newval[i];
 }
 
 
@@ -158,6 +158,12 @@ void update()
       // }
       UpdateOldVal<<<1,tpoints>>>
    }
+
+   // load data from GPU
+   cudaMemcpy(values, dev_values, MAXPOINTS+2)
+   cudaFree(dev_newval);
+   cudaFree(dev_oldval);
+   cudaFree(dev_values);
 }
 
 /**********************************************************************
