@@ -8,7 +8,7 @@
 #include <math.h>
 #include <time.h>
 
-#define CHECK_TIME
+// #define CHECK_TIME
 
 #define MAXPOINTS 1000000
 #define MAXSTEPS 1000000
@@ -72,20 +72,40 @@ void init_line(void)
    tmp = tpoints - 1;
    for (j = 1; j <= tpoints; j++) {
       x = k/tmp;
-      values[j] = sin (fac * x);
+      dev_values[j] = sin (fac * x);
       k = k + 1.0;
    } 
 
    /* Initialize old values array */
    for (i = 1; i <= tpoints; i++) 
-      oldval[i] = values[i];
+      dev_oldval[i] = dev_values[i];
 }
 
 /**********************************************************************
  *      Calculate new values using wave equation
  *********************************************************************/
-// cuda version
 
+ void move_to_device()
+ {
+    // load data to device memory
+   cudaMalloc(&dev_values, MAXPOINTS+2);
+   cudaMemcpy(dev_values, values, MAXPOINTS+2, cudaMemcpyHostToDevice);
+   cudaMalloc(&dev_oldval, MAXPOINTS+2);
+   cudaMemcpy(dev_oldval, oldval, MAXPOINTS+2, cudaMemcpyHostToDevice);
+   cudaMalloc(&dev_newval, MAXPOINTS+2);
+   cudaMemcpy(dev_newval, newval, MAXPOINTS+2, cudaMemcpyHostToDevice);
+ }
+
+ void move_to_host()
+ {
+    // load data from GPU
+   cudaMemcpy(values, dev_values, MAXPOINTS+2, cudaMemcpyDeviceToHost);
+   cudaFree(dev_newval);
+   cudaFree(dev_oldval);
+   cudaFree(dev_values);
+ }
+
+// cuda version
 __global__ void DoMath(float* dev_newval, float* dev_oldval, float* dev_values)
 {
    float dtime, c, dx, tau, sqtau;
@@ -126,15 +146,6 @@ void update()
 {
    int i;
 
-   // load data to device memory
-   cudaMalloc(&dev_values, MAXPOINTS+2);
-   cudaMemcpy(dev_values, values, MAXPOINTS+2, cudaMemcpyHostToDevice);
-   cudaMalloc(&dev_oldval, MAXPOINTS+2);
-   cudaMemcpy(dev_oldval, oldval, MAXPOINTS+2, cudaMemcpyHostToDevice);
-   cudaMalloc(&dev_newval, MAXPOINTS+2);
-   cudaMemcpy(dev_newval, newval, MAXPOINTS+2, cudaMemcpyHostToDevice);
-
-
    /* Update values for each time step */
    for (i = 1; i<= nsteps; i++) {
       /* Update points along line for this time step */
@@ -160,12 +171,6 @@ void update()
       // }
       UpdateOldVal<<<1,tpoints>>>(dev_newval, dev_oldval, dev_values);
    }
-
-   // load data from GPU
-   cudaMemcpy(values, dev_values, MAXPOINTS+2, cudaMemcpyDeviceToHost);
-   cudaFree(dev_newval);
-   cudaFree(dev_oldval);
-   cudaFree(dev_values);
 }
 
 /**********************************************************************
@@ -193,11 +198,17 @@ int main(int argc, char *argv[])
    #ifdef CHECK_TIME
    clock_t begin = clock();
    #endif
-	printf("Initializing points on the line...\n");
+   printf("Initializing points on the line...\n");
+   
+   move_to_device();
+
 	init_line();
 	printf("Updating all points for all time steps...\n");
 	update();
-	printf("Printing final results...\n");
+   printf("Printing final results...\n");
+   
+   move_to_host();
+
 	printfinal();
    printf("\nDone.\n\n");
    #ifdef CHECK_TIME
