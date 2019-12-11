@@ -8,6 +8,8 @@
 #include <math.h>
 #include <time.h>
 
+#define CHECK_TIME
+
 #define MAXPOINTS 1000000
 #define MAXSTEPS 1000000
 #define MINPOINTS 20
@@ -187,17 +189,21 @@ int main(int argc, char *argv[])
 {
 	sscanf(argv[1],"%d",&tpoints);
 	sscanf(argv[2],"%d",&nsteps);
-	check_param();
+   check_param();
+   #ifdef CHECK_TIME
    clock_t begin = clock();
+   #endif
 	printf("Initializing points on the line...\n");
 	init_line();
 	printf("Updating all points for all time steps...\n");
 	update();
 	printf("Printing final results...\n");
 	printfinal();
-	printf("\nDone.\n\n");
+   printf("\nDone.\n\n");
+   #ifdef CHECK_TIME
 	clock_t end = clock();  
    double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
    printf("time: %4f sec\n", time_spent);
+   #endif
 	return 0;
 }
