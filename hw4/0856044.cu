@@ -13,7 +13,7 @@
 #define MAXPOINTS 1000000
 #define MAXSTEPS 1000000
 #define MINPOINTS 20
-#define PI 3.14159265
+#define PI 3.14159265f
 
 void check_param(void);
 void init_line(void);
@@ -67,18 +67,18 @@ void init_line(void)
    float x, fac, k, tmp;
 
    /* Calculate initial values based on sine curve */
-   fac = 2.0 * PI;
-   k = 0.0; 
-   tmp = tpoints - 1;
-   for (j = 1; j <= tpoints; j++) {
+   fac = 2.0f * PI;
+   k = 0.0f; 
+   tmp = tpoints - 1.0f;
+   for (j = 1.0f; j <= tpoints; j++) {
       x = k/tmp;
-      dev_values[j] = sin (fac * x);
-      k = k + 1.0;
+      values[j] = sin (fac * x);
+      k = k + 1.0f;
    } 
 
    /* Initialize old values array */
    for (i = 1; i <= tpoints; i++) 
-      dev_oldval[i] = dev_values[i];
+      oldval[i] = values[i];
 }
 
 /**********************************************************************
@@ -111,12 +111,12 @@ __global__ void DoMath(float* dev_newval, float* dev_oldval, float* dev_values)
    float dtime, c, dx, tau, sqtau;
    int i = threadIdx.x;
 
-   dtime = 0.3;
-   c = 1.0;
-   dx = 1.0;
+   dtime = 0.3f;
+   c = 1.0f;
+   dx = 1.0f;
    tau = (c * dtime / dx);
    sqtau = tau * tau;
-   dev_newval[i] = (2.0 * dev_values[i]) - dev_oldval[i] + (sqtau *  (-2.0)*dev_values[i]);
+   dev_newval[i] = (2.0f * dev_values[i]) - dev_oldval[i] + (sqtau *  (-2.0f)*dev_values[i]);
 }
 
 __global__ void UpdateOldVal(float* dev_newval, float* dev_oldval, float* dev_values)
@@ -150,8 +150,8 @@ void update()
    for (i = 1; i<= nsteps; i++) {
       /* Update points along line for this time step */
       // if ((j == 1) || (j  == tpoints))
-      newval[1] = 0.0;
-      newval[tpoints] = 0.0;
+      newval[1] = 0.0f;
+      newval[tpoints] = 0.0f;
 
       DoMath<<<2,tpoints>>>(dev_newval, dev_oldval, dev_values);
 
@@ -199,10 +199,10 @@ int main(int argc, char *argv[])
    clock_t begin = clock();
    #endif
    printf("Initializing points on the line...\n");
-   
+   init_line();
+
    move_to_device();
 
-	init_line();
 	printf("Updating all points for all time steps...\n");
 	update();
    printf("Printing final results...\n");
