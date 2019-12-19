@@ -8,10 +8,12 @@
 #include <math.h>
 #include <time.h>
 
+// #define CHECK_TIME
+
 #define MAXPOINTS 1000000
 #define MAXSTEPS 1000000
 #define MINPOINTS 20
-#define PI 3.14159265
+#define PI 3.14159265f
 
 void check_param(void);
 void init_line(void);
@@ -25,6 +27,7 @@ float  values[MAXPOINTS+2], 	/* values at time t */
        oldval[MAXPOINTS+2], 	/* values at time (t-dt) */
        newval[MAXPOINTS+2]; 	/* values at time (t+dt) */
 
+float *dev_values, *dev_oldval, *dev_newval;
 
 /**********************************************************************
  *	Checks input values from parameters
@@ -64,13 +67,13 @@ void init_line(void)
    float x, fac, k, tmp;
 
    /* Calculate initial values based on sine curve */
-   fac = 2.0 * PI;
-   k = 0.0; 
-   tmp = tpoints - 1;
-   for (j = 1; j <= tpoints; j++) {
+   fac = 2.0f * PI;
+   k = 0.0f; 
+   tmp = tpoints - 1.0f;
+   for (j = 1.0f; j <= tpoints; j++) {
       x = k/tmp;
       values[j] = sin (fac * x);
-      k = k + 1.0;
+      k = k + 1.0f;
    } 
 
    /* Initialize old values array */
@@ -81,19 +84,46 @@ void init_line(void)
 /**********************************************************************
  *      Calculate new values using wave equation
  *********************************************************************/
-// cuda version
 
-__global__ void DoMath()
+ void move_to_device()
+ {
+    // load data to device memory
+   cudaMalloc(&dev_values, MAXPOINTS+2);
+   cudaMemcpy(dev_values, values, MAXPOINTS+2, cudaMemcpyHostToDevice);
+   cudaMalloc(&dev_oldval, MAXPOINTS+2);
+   cudaMemcpy(dev_oldval, oldval, MAXPOINTS+2, cudaMemcpyHostToDevice);
+   cudaMalloc(&dev_newval, MAXPOINTS+2);
+   cudaMemcpy(dev_newval, newval, MAXPOINTS+2, cudaMemcpyHostToDevice);
+ }
+
+ void move_to_host()
+ {
+    // load data from GPU
+   cudaMemcpy(values, dev_values, MAXPOINTS+2, cudaMemcpyDeviceToHost);
+   cudaFree(dev_newval);
+   cudaFree(dev_oldval);
+   cudaFree(dev_values);
+ }
+
+// cuda version
+__global__ void DoMath(float* dev_newval, float* dev_oldval, float* dev_values)
 {
    float dtime, c, dx, tau, sqtau;
    int i = threadIdx.x;
 
-   dtime = 0.3;
-   c = 1.0;
-   dx = 1.0;
+   dtime = 0.3f;
+   c = 1.0f;
+   dx = 1.0f;
    tau = (c * dtime / dx);
    sqtau = tau * tau;
-   newval[i] = (2.0 * values[i]) - oldval[i] + (sqtau *  (-2.0)*values[i]);
+   dev_newval[i] = (2.0f * dev_values[i]) - dev_oldval[i] + (sqtau *  (-2.0f)*dev_values[i]);
+}
+
+__global__ void UpdateOldVal(float* dev_newval, float* dev_oldval, float* dev_values)
+{
+   int i = threadIdx.x;
+   dev_oldval[i] = dev_values[i];
+   dev_values[i] = dev_newval[i];
 }
 
 
@@ -114,26 +144,16 @@ __global__ void DoMath()
  *********************************************************************/
 void update()
 {
-   int i, j;
-
-   // load data to device memory
-   float *dev_values, *dev_oldval, *dev_newval;
-   cudaMalloc(&dev_values, MAXPOINTS+2);
-   cudaMemcpy(dev_values, values, MAXPOINTS+2)
-   cudaMalloc(&dev_oldval, MAXPOINTS+2);
-   cudaMemcpy(dev_oldval, oldval, MAXPOINTS+2)
-   cudaMalloc(&dev_newval, MAXPOINTS+2);
-   cudaMemcpy(dev_newval, newval, MAXPOINTS+2)
-
+   int i;
 
    /* Update values for each time step */
    for (i = 1; i<= nsteps; i++) {
       /* Update points along line for this time step */
       // if ((j == 1) || (j  == tpoints))
-      newval[1] = 0.0;
-      newval[tpoints] = 0.0;
+      newval[1] = 0.0f;
+      newval[tpoints] = 0.0f;
 
-      DoMath<<<1,tpoints>>>();
+      DoMath<<<2,tpoints>>>(dev_newval, dev_oldval, dev_values);
 
       // for (j = 1; j <= tpoints; j++) {
       //    /* global endpoints */
@@ -145,10 +165,11 @@ void update()
       
 
       /* Update old values with new values */
-      for (j = 1; j <= tpoints; j++) {
-         oldval[j] = values[j];
-         values[j] = newval[j];
-      }
+      // for (j = 1; j <= tpoints; j++) {
+      //    oldval[j] = values[j];
+      //    values[j] = newval[j];
+      // }
+      UpdateOldVal<<<1,tpoints>>>(dev_newval, dev_oldval, dev_values);
    }
 }
 
@@ -173,17 +194,27 @@ int main(int argc, char *argv[])
 {
 	sscanf(argv[1],"%d",&tpoints);
 	sscanf(argv[2],"%d",&nsteps);
-	check_param();
+   check_param();
+   #ifdef CHECK_TIME
    clock_t begin = clock();
-	printf("Initializing points on the line...\n");
-	init_line();
+   #endif
+   printf("Initializing points on the line...\n");
+   init_line();
+
+   move_to_device();
+
 	printf("Updating all points for all time steps...\n");
 	update();
-	printf("Printing final results...\n");
+   printf("Printing final results...\n");
+   
+   move_to_host();
+
 	printfinal();
-	printf("\nDone.\n\n");
+   printf("\nDone.\n\n");
+   #ifdef CHECK_TIME
 	clock_t end = clock();  
    double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
    printf("time: %4f sec\n", time_spent);
+   #endif
 	return 0;
 }
