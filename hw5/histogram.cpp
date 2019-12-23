@@ -163,10 +163,11 @@ int main(int argc, char *argv[])
 
             std::string newfile = "hist_" + std::string(filename); 
             writebmp(newfile.c_str(), ret);
-            clock_t end = clock();  
-            double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
-            printf("time: %4f sec\n", time_spent);
+            
         }
+        clock_t end = clock();  
+        double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
+        printf("time: %4f sec\n", time_spent);
     }else{
         printf("Usage: ./hist <img.bmp> [img2.bmp ...]\n");
     }
