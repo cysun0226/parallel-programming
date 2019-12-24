@@ -4,9 +4,6 @@
 #include <ios>
 #include <time.h>
 
-#include <CL/cl.hpp>
-
-
 typedef struct
 {
     uint8_t R;
@@ -124,51 +121,14 @@ int main(int argc, char *argv[])
     
     if (argc >= 2)
     {
-        // initialize opencl
-        unsigned int platform_id = 0, device_id = 0;
-
-        // query platform
-        std::vector<cl::Platform> platforms;
-        cl::Platform::get(&platforms);
-
-        // get device list
-        std::vector<cl::Device> devices;
-        platforms[platform_id].getDevices(CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_CPU, &devices);
-
-        // create context
-        cl::Context context(devices);
-
-        // command queue
-        cl::CommandQueue queue = cl::CommandQueue(context, devices[device_id]);
-
         int many_img = argc - 1;
         clock_t begin = clock();
         for (int i = 0; i < many_img; i++)
         {
             filename = argv[i + 1];
             Image *img = readbmp(filename);
+
             std::cout << img->weight << ":" << img->height << "\n";
-
-            // memory buffers
-            cl::Buffer buf_img = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(Image)+ img->size*sizeof(RGB));
-            cl::Buffer buf_R = cl::Buffer(context, CL_MEM_WRITE_ONLY, 256*sizeof(uint32_t));
-            cl::Buffer buf_G = cl::Buffer(context, CL_MEM_WRITE_ONLY, 256*sizeof(uint32_t));
-            cl::Buffer buf_B = cl::Buffer(context, CL_MEM_WRITE_ONLY, 256*sizeof(uint32_t));
-
-            // move data to the buffer
-            queue.enqueueWriteBuffer(buf_img, CL_FALSE, 0, sizeof(Image)+img->size*sizeof(RGB), img);
-
-            // load kernel code
-            std::ifstream kernelFile("histogram.cl");
-            std::string kernelCode(std::istreambuf_iterator<char>(kernelFile), (std::istreambuf_iterator<char>()));
-            cl::Program::Sources source(1, std::make_pair(kernelCode.c_str(), kernelCode.length()));
-            
-            // make & build
-            cl::Program kernel = cl::Program(context, kernelCode);
-            
-
-
-
 
             uint32_t R[256];
             uint32_t G[256];
