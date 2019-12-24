@@ -165,7 +165,17 @@ int main(int argc, char *argv[])
             
             // make & build
             cl::Program kernel = cl::Program(context, kernelCode);
+            kernel.build(devices);
+            cl::Kernel histogram_kernel(kernel, "histogram_kernel");
+
+            // arguments
+            histogram_kernel.setArg(0, buf_img);
+            histogram_kernel.setArg(1, buf_R);
+            histogram_kernel.setArg(2, buf_G);
+            histogram_kernel.setArg(3, buf_B);
             
+            // execute
+            // cl::NDRange global()
 
 
 
