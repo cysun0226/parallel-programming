@@ -7,6 +7,7 @@
 
 #include <CL/cl.hpp>
 
+//#define DUMP_RGB true
 
 typedef struct
 {
@@ -54,6 +55,18 @@ Image *readbmp(const char *filename)
     }
     return ret;
 }
+
+//int getImageSize(const char *filename)
+//{
+//    std::ifstream bmp(filename, std::ios::binary);
+//    char header[54];
+//    bmp.read(header, 54);
+//    uint32_t size = *(int *)&header[2];
+//    uint32_t offset = *(int *)&header[10];
+//    uint32_t w = *(int *)&header[18];
+//    uint32_t h = *(int *)&header[22];
+//    return w*h;
+//}
 
 int writebmp(const char *filename, Image *img)
 {
@@ -218,6 +231,7 @@ int main(int argc, char *argv[])
 
             // memory buffers
             cl::Buffer buf_data = cl::Buffer(context, CL_MEM_READ_ONLY, img->size*sizeof(RGB));
+//            uint32_t* map_ptr = (uint32_t*) cl::enqueueMapBuffer(buf_data, CL_TRUE, CL_MEM_READ_WRITE, 0, img->size*sizeof(RGB));
             cl::Buffer buf_R = cl::Buffer(context, CL_MEM_WRITE_ONLY, 256*sizeof(uint32_t));
             cl::Buffer buf_G = cl::Buffer(context, CL_MEM_WRITE_ONLY, 256*sizeof(uint32_t));
             cl::Buffer buf_B = cl::Buffer(context, CL_MEM_WRITE_ONLY, 256*sizeof(uint32_t));
@@ -226,8 +240,6 @@ int main(int argc, char *argv[])
             queue.enqueueFillBuffer(buf_G, 0, 0, 256*sizeof(uint32_t));
             queue.enqueueFillBuffer(buf_B, 0, 0, 256*sizeof(uint32_t));
             queue.finish();
-
-            
 
             // move data to the device
             queue.enqueueWriteBuffer(buf_data, CL_TRUE, 0, img->size*sizeof(RGB), img->data);
@@ -265,9 +277,9 @@ int main(int argc, char *argv[])
             queue.enqueueReadBuffer(buf_B, CL_TRUE, 0, 256*sizeof(uint32_t), B);
             queue.finish();
 
-            // histogram(img,R,G,B);
-
+            #ifdef DUMP_RGB
             dump_RGB(R, G, B);
+            #endif
 
             int max = 0;
             for(int i=0;i<256;i++){
@@ -296,6 +308,10 @@ int main(int argc, char *argv[])
 
             std::string newfile = "hist_" + std::string(filename); 
             writebmp(newfile.c_str(), ret);
+
+            // release the resource
+            delete[] img;
+
             
         }
         clock_t end = clock();  
