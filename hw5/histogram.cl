@@ -23,7 +23,13 @@ kernel void hist_count(
 )
 {
     int i = get_global_id(0);
-    R[data[i].R]++;
-    G[data[i].G]++;
-    B[data[i].B]++;
+    if(i % 1000000 == 0){
+        // printf("id = %d\n", i);
+    }
+    //R[data[i].R]++;
+    //G[data[i].G]++;
+    //B[data[i].B]++;
+    atomic_add(&R[data[i].R], 1);
+    atomic_add(&G[data[i].G], 1);
+    atomic_add(&B[data[i].B], 1);
 }
