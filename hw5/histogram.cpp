@@ -5,9 +5,40 @@
 #include <time.h>
 #include <math.h>
 
-#include <CL/cl.hpp>
-
+//#include <CL/cl.hpp>
+#include <CL/cl.h>
 //#define DUMP_RGB true
+
+const char *kernelSource =                                       "\n" \
+"typedef struct \n" \
+"{ \n" \
+"    uchar R; \n" \
+"    uchar G; \n" \
+"    uchar B; \n" \
+"    uchar align; \n" \
+"} RGB; \n" \
+" \n" \
+"typedef struct \n" \
+"{ \n" \
+"    bool type; \n" \
+"    uint size; \n" \
+"    uint height; \n" \
+"    uint weight; \n" \
+"    RGB *data; \n" \
+"} Image; \n" \
+" \n" \
+"kernel void hist_count( \n" \
+"    global RGB *data, \n" \
+"    global uint *R, \n" \
+"    global uint *G, \n" \
+"    global uint *B \n" \
+") \n" \
+"{ \n" \
+"    int i = get_global_id(0); \n" \
+"    atomic_add(&R[data[i].R], 1); \n" \
+"    atomic_add(&G[data[i].G], 1); \n" \
+"    atomic_add(&B[data[i].B], 1); \n" \
+"} \n";
 
 typedef struct
 {
@@ -161,36 +192,6 @@ void dump_RGB(uint32_t R[256],uint32_t G[256],uint32_t B[256]){
     std::cout << std::endl << std::endl;
 }
 
-cl::Platform getPlatform() {
-    /* Returns the first platform found. */
-    std::vector<cl::Platform> all_platforms;
-    cl::Platform::get(&all_platforms);
-
-    if (all_platforms.size()==0) {
-        std::cout << "No platforms found. Check OpenCL installation!\n";
-        exit(1);
-    }
-    return all_platforms[0];
-}
-
-cl::Device getDevice(cl::Platform platform, int i, bool display=false) {
-    /* Returns the deviced specified by the index i on platform.
-     * If display is true, then all of the platforms are listed.
-     */
-    std::vector<cl::Device> all_devices;
-    platform.getDevices(CL_DEVICE_TYPE_ALL, &all_devices);
-    if(all_devices.size()==0){
-        std::cout << "No devices found. Check OpenCL installation!\n";
-        exit(1);
-    }
-
-    if (display) {
-        for (int j=0; j<all_devices.size(); j++)
-            printf("Device %d: %s\n", j, all_devices[j].getInfo<CL_DEVICE_NAME>().c_str());
-    }
-    return all_devices[i];
-}
-
 int main(int argc, char *argv[])
 {
     char *filename;
@@ -198,31 +199,49 @@ int main(int argc, char *argv[])
     if (argc >= 2)
     {
         // initialize opencl
-        unsigned int platform_id = 0, device_id = 0;
+        cl_int err;
+        cl_platform_id cpPlatform;        // OpenCL platform
+        cl_device_id device_id;           // device ID
+        cl_context context;               // context
+        cl_command_queue queue;           // command queue
+        cl_program program;               // program
+        cl_kernel kernel;                 // kernel
 
-        // // query platform
-        // std::vector<cl::Platform> platforms;
-        // cl::Platform::get(&platforms);
-
-        // // get device list
-        // std::vector<cl::Device> devices;
-        // platforms[platform_id].getDevices(CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_CPU, &devices);
-
-        cl::Platform default_platform = getPlatform();
-        cl::Device default_device     = getDevice(default_platform, 0);
+        // query platform
+        clGetPlatformIDs(1, &cpPlatform, NULL);
+        
+        // get device list
+        clGetDeviceIDs(cpPlatform, CL_DEVICE_TYPE_GPU, 1, &device_id, NULL);
 
         // create context
-        cl::Context context(default_device);
+        context = clCreateContext(0, 1, &device_id, NULL, NULL, &err);
 
         // command queue
-        cl::CommandQueue queue = cl::CommandQueue(context, default_device);
+        queue = clCreateCommandQueue(context, device_id, 0, &err);
+
+        // load kernel code
+        std::ifstream kernelFile("histogram.cl");
+        std::string kernelCode(std::istreambuf_iterator<char>(kernelFile), (std::istreambuf_iterator<char>()));
+//        program = clCreateProgramWithSource(context, 1, (const char **)kernelCode.c_str(), NULL, &err);
+        program = clCreateProgramWithSource(context, 1,
+                                            (const char **) & kernelSource, NULL, &err);
+
+        // make & build
+        clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
+        kernel = clCreateKernel(program, "hist_count", &err);
+
+        // get build failed log
+//        size_t len = 0;
+//        cl_int ret = CL_SUCCESS;
+//        ret = clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG, 0, NULL, &len);
+//        char *buffer = static_cast<char *>(calloc(len, sizeof(char)));
+//        ret = clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG, len, buffer, NULL);
 
         int many_img = argc - 1;
         clock_t begin = clock();
         for (int i = 0; i < many_img; i++)
         {
             filename = argv[i + 1];
-            uint32_t z = 0;
             uint32_t R[256];
             uint32_t G[256];
             uint32_t B[256];
@@ -230,52 +249,49 @@ int main(int argc, char *argv[])
             std::cout << img->weight << ":" << img->height << "\n";
 
             // memory buffers
-            cl::Buffer buf_data = cl::Buffer(context, CL_MEM_READ_ONLY, img->size*sizeof(RGB));
-//            uint32_t* map_ptr = (uint32_t*) cl::enqueueMapBuffer(buf_data, CL_TRUE, CL_MEM_READ_WRITE, 0, img->size*sizeof(RGB));
-            cl::Buffer buf_R = cl::Buffer(context, CL_MEM_WRITE_ONLY, 256*sizeof(uint32_t));
-            cl::Buffer buf_G = cl::Buffer(context, CL_MEM_WRITE_ONLY, 256*sizeof(uint32_t));
-            cl::Buffer buf_B = cl::Buffer(context, CL_MEM_WRITE_ONLY, 256*sizeof(uint32_t));
+            cl_mem buf_data = clCreateBuffer(context, CL_MEM_READ_ONLY, img->size*sizeof(RGB), NULL, NULL);
+            cl_mem buf_R = clCreateBuffer(context, CL_MEM_WRITE_ONLY, 256*sizeof(uint32_t), NULL, NULL);
+            cl_mem buf_G = clCreateBuffer(context, CL_MEM_WRITE_ONLY, 256*sizeof(uint32_t), NULL, NULL);
+            cl_mem buf_B = clCreateBuffer(context, CL_MEM_WRITE_ONLY, 256*sizeof(uint32_t), NULL, NULL);
             
-            queue.enqueueFillBuffer(buf_R, 0, 0, 256*sizeof(uint32_t));
-            queue.enqueueFillBuffer(buf_G, 0, 0, 256*sizeof(uint32_t));
-            queue.enqueueFillBuffer(buf_B, 0, 0, 256*sizeof(uint32_t));
-            queue.finish();
+            cl_uint z = 0;
+            clEnqueueFillBuffer(queue, buf_R, &z, sizeof(z), 0, 256*sizeof(uint32_t), 0, NULL, NULL);
+            clEnqueueFillBuffer(queue, buf_G, &z, sizeof(z), 0, 256*sizeof(uint32_t), 0, NULL, NULL);
+            clEnqueueFillBuffer(queue, buf_B, &z, sizeof(z), 0, 256*sizeof(uint32_t), 0, NULL, NULL);
+            
 
             // move data to the device
-            queue.enqueueWriteBuffer(buf_data, CL_TRUE, 0, img->size*sizeof(RGB), img->data);
+            clEnqueueWriteBuffer(queue, buf_data, CL_TRUE, 0, img->size*sizeof(RGB), img->data, 0, NULL, NULL);
+            // queue.enqueueWriteBuffer(buf_data, CL_TRUE, 0, img->size*sizeof(RGB), img->data);
 
-            // load kernel code
-            std::ifstream kernelFile("histogram.cl");
-            std::string kernelCode(std::istreambuf_iterator<char>(kernelFile), (std::istreambuf_iterator<char>()));
-            cl::Program::Sources source;
-            source.push_back({kernelCode.c_str(), kernelCode.length()});
+
             
-            // make & build
-            cl::Program program = cl::Program(context, source);
+            // cl::Program program = cl::Program(context, source);
             // program.build(devices);
-            if (program.build({default_device}) != CL_SUCCESS) {
-                std::cout << "Error building: " << program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(default_device) << std::endl;
-                exit(1);
-            }
-            cl::Kernel histogram_kernel(program, "hist_count");
+            // if (program.build({default_device}) != CL_SUCCESS) {
+            //     std::cout << "Error building: " << program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(default_device) << std::endl;
+            //     exit(1);
+            // }
+            // cl::Kernel histogram_kernel(program, "hist_count");
 
             // arguments
-            histogram_kernel.setArg(0, buf_data);
-            histogram_kernel.setArg(1, buf_R);
-            histogram_kernel.setArg(2, buf_G);
-            histogram_kernel.setArg(3, buf_B);
+            clSetKernelArg(kernel, 0, sizeof(cl_mem), &buf_data);
+            clSetKernelArg(kernel, 1, sizeof(cl_mem), &buf_R);
+            clSetKernelArg(kernel, 2, sizeof(cl_mem), &buf_G);
+            clSetKernelArg(kernel, 3, sizeof(cl_mem), &buf_B);
+            clFinish(queue);
             
             // execute
-            cl::NDRange global(img->size);
-            cl::NDRange local(256);
-            queue.enqueueNDRangeKernel(histogram_kernel, cl::NullRange, global, local);
-            queue.finish();
+            size_t localSize = 64;
+            size_t globalSize = ceil(img->size/(float)localSize)*localSize;
+            clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &globalSize, &localSize, 0, NULL, NULL);
+            clFinish(queue);
 
             // move data from device to host
-            queue.enqueueReadBuffer(buf_R, CL_TRUE, 0, 256*sizeof(uint32_t), R);
-            queue.enqueueReadBuffer(buf_G, CL_TRUE, 0, 256*sizeof(uint32_t), G);
-            queue.enqueueReadBuffer(buf_B, CL_TRUE, 0, 256*sizeof(uint32_t), B);
-            queue.finish();
+            clEnqueueReadBuffer(queue, buf_R, CL_TRUE, 0, 256*sizeof(uint32_t), R, 0, NULL, NULL);
+            clEnqueueReadBuffer(queue, buf_G, CL_TRUE, 0, 256*sizeof(uint32_t), G, 0, NULL, NULL);
+            clEnqueueReadBuffer(queue, buf_B, CL_TRUE, 0, 256*sizeof(uint32_t), B, 0, NULL, NULL);
+            clFinish(queue);
 
             #ifdef DUMP_RGB
             dump_RGB(R, G, B);
@@ -311,9 +327,15 @@ int main(int argc, char *argv[])
 
             // release the resource
             delete[] img;
-
-            
+            clReleaseMemObject(buf_data);
+            clReleaseMemObject(buf_R);
+            clReleaseMemObject(buf_G);
+            clReleaseMemObject(buf_B);
         }
+        clReleaseProgram(program);
+        clReleaseKernel(kernel);
+        clReleaseCommandQueue(queue);
+        clReleaseContext(context);
         clock_t end = clock();  
         double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
         printf("time: %4f sec\n", time_spent);
