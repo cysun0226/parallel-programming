@@ -222,9 +222,9 @@ int main(int argc, char *argv[])
             cl::Buffer buf_G = cl::Buffer(context, CL_MEM_WRITE_ONLY, 256*sizeof(uint32_t));
             cl::Buffer buf_B = cl::Buffer(context, CL_MEM_WRITE_ONLY, 256*sizeof(uint32_t));
             
-            queue.enqueueFillBuffer(buf_R, &z, 0, 256*sizeof(uint32_t));
-            queue.enqueueFillBuffer(buf_G, &z, 0, 256*sizeof(uint32_t));
-            queue.enqueueFillBuffer(buf_B, &z, 0, 256*sizeof(uint32_t));
+            queue.enqueueFillBuffer(buf_R, 0, 0, 256*sizeof(uint32_t));
+            queue.enqueueFillBuffer(buf_G, 0, 0, 256*sizeof(uint32_t));
+            queue.enqueueFillBuffer(buf_B, 0, 0, 256*sizeof(uint32_t));
             queue.finish();
 
             
@@ -235,7 +235,6 @@ int main(int argc, char *argv[])
             // load kernel code
             std::ifstream kernelFile("histogram.cl");
             std::string kernelCode(std::istreambuf_iterator<char>(kernelFile), (std::istreambuf_iterator<char>()));
-            std::cout << kernelCode << std::endl;
             cl::Program::Sources source;
             source.push_back({kernelCode.c_str(), kernelCode.length()});
             
