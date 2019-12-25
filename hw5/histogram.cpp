@@ -119,6 +119,35 @@ void histogram(Image *img,uint32_t R[256],uint32_t G[256],uint32_t B[256]){
     }
 }
 
+void dump_RGB(uint32_t R[256],uint32_t G[256],uint32_t B[256]){
+    std::cout << "[R]" << std::endl;
+    for (int i = 0; i < 256; i++) {
+        std::cout << R[i] << " ";
+        if(i%16==15){
+            std::cout << std::endl;
+        }
+    }
+    std::cout << std::endl << std::endl;
+
+    std::cout << "[G]" << std::endl;
+    for (int i = 0; i < 256; i++) {
+        std::cout << G[i] << " ";
+        if(i%16==15){
+            std::cout << std::endl;
+        }
+    }
+    std::cout << std::endl << std::endl;
+
+    std::cout << "[B]" << std::endl;
+    for (int i = 0; i < 256; i++) {
+        std::cout << B[i] << " ";
+        if(i%16==15){
+            std::cout << std::endl;
+        }
+    }
+    std::cout << std::endl << std::endl;
+}
+
 cl::Platform getPlatform() {
     /* Returns the first platform found. */
     std::vector<cl::Platform> all_platforms;
@@ -206,6 +235,7 @@ int main(int argc, char *argv[])
             // load kernel code
             std::ifstream kernelFile("histogram.cl");
             std::string kernelCode(std::istreambuf_iterator<char>(kernelFile), (std::istreambuf_iterator<char>()));
+            std::cout << kernelCode << std::endl;
             cl::Program::Sources source;
             source.push_back({kernelCode.c_str(), kernelCode.length()});
             
@@ -226,7 +256,7 @@ int main(int argc, char *argv[])
             
             // execute
             cl::NDRange global(img->size);
-            cl::NDRange local(64);
+            cl::NDRange local(256);
             queue.enqueueNDRangeKernel(histogram_kernel, cl::NullRange, global, local);
             queue.finish();
 
@@ -234,8 +264,11 @@ int main(int argc, char *argv[])
             queue.enqueueReadBuffer(buf_R, CL_TRUE, 0, 256*sizeof(uint32_t), R);
             queue.enqueueReadBuffer(buf_G, CL_TRUE, 0, 256*sizeof(uint32_t), G);
             queue.enqueueReadBuffer(buf_B, CL_TRUE, 0, 256*sizeof(uint32_t), B);
+            queue.finish();
 
             // histogram(img,R,G,B);
+
+            dump_RGB(R, G, B);
 
             int max = 0;
             for(int i=0;i<256;i++){
