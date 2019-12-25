@@ -180,6 +180,10 @@ int main(int argc, char *argv[])
         for (int i = 0; i < many_img; i++)
         {
             filename = argv[i + 1];
+            uint32_t z = 0;
+            uint32_t R[256];
+            uint32_t G[256];
+            uint32_t B[256];
             Image *img = readbmp(filename);
             std::cout << img->weight << ":" << img->height << "\n";
 
@@ -188,9 +192,13 @@ int main(int argc, char *argv[])
             cl::Buffer buf_R = cl::Buffer(context, CL_MEM_WRITE_ONLY, 256*sizeof(uint32_t));
             cl::Buffer buf_G = cl::Buffer(context, CL_MEM_WRITE_ONLY, 256*sizeof(uint32_t));
             cl::Buffer buf_B = cl::Buffer(context, CL_MEM_WRITE_ONLY, 256*sizeof(uint32_t));
-            uint32_t R[256];
-            uint32_t G[256];
-            uint32_t B[256];
+            
+            queue.enqueueFillBuffer(buf_R, &z, 0, 256*sizeof(uint32_t));
+            queue.enqueueFillBuffer(buf_G, &z, 0, 256*sizeof(uint32_t));
+            queue.enqueueFillBuffer(buf_B, &z, 0, 256*sizeof(uint32_t));
+            queue.finish();
+
+            
 
             // move data to the device
             queue.enqueueWriteBuffer(buf_data, CL_TRUE, 0, img->size*sizeof(RGB), img->data);
