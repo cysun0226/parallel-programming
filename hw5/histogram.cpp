@@ -3,6 +3,7 @@
 #include <string>
 #include <ios>
 #include <time.h>
+#include <math.h>
 
 #include <CL/cl.hpp>
 
@@ -118,6 +119,36 @@ void histogram(Image *img,uint32_t R[256],uint32_t G[256],uint32_t B[256]){
     }
 }
 
+cl::Platform getPlatform() {
+    /* Returns the first platform found. */
+    std::vector<cl::Platform> all_platforms;
+    cl::Platform::get(&all_platforms);
+
+    if (all_platforms.size()==0) {
+        std::cout << "No platforms found. Check OpenCL installation!\n";
+        exit(1);
+    }
+    return all_platforms[0];
+}
+
+cl::Device getDevice(cl::Platform platform, int i, bool display=false) {
+    /* Returns the deviced specified by the index i on platform.
+     * If display is true, then all of the platforms are listed.
+     */
+    std::vector<cl::Device> all_devices;
+    platform.getDevices(CL_DEVICE_TYPE_ALL, &all_devices);
+    if(all_devices.size()==0){
+        std::cout << "No devices found. Check OpenCL installation!\n";
+        exit(1);
+    }
+
+    if (display) {
+        for (int j=0; j<all_devices.size(); j++)
+            printf("Device %d: %s\n", j, all_devices[j].getInfo<CL_DEVICE_NAME>().c_str());
+    }
+    return all_devices[i];
+}
+
 int main(int argc, char *argv[])
 {
     char *filename;
@@ -127,19 +158,22 @@ int main(int argc, char *argv[])
         // initialize opencl
         unsigned int platform_id = 0, device_id = 0;
 
-        // query platform
-        std::vector<cl::Platform> platforms;
-        cl::Platform::get(&platforms);
+        // // query platform
+        // std::vector<cl::Platform> platforms;
+        // cl::Platform::get(&platforms);
 
-        // get device list
-        std::vector<cl::Device> devices;
-        platforms[platform_id].getDevices(CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_CPU, &devices);
+        // // get device list
+        // std::vector<cl::Device> devices;
+        // platforms[platform_id].getDevices(CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_CPU, &devices);
+
+        cl::Platform default_platform = getPlatform();
+        cl::Device default_device     = getDevice(default_platform, 0);
 
         // create context
-        cl::Context context(devices);
+        cl::Context context(default_device);
 
         // command queue
-        cl::CommandQueue queue = cl::CommandQueue(context, devices[device_id]);
+        cl::CommandQueue queue = cl::CommandQueue(context, default_device);
 
         int many_img = argc - 1;
         clock_t begin = clock();
@@ -150,41 +184,50 @@ int main(int argc, char *argv[])
             std::cout << img->weight << ":" << img->height << "\n";
 
             // memory buffers
-            cl::Buffer buf_img = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(Image)+ img->size*sizeof(RGB));
+            cl::Buffer buf_data = cl::Buffer(context, CL_MEM_READ_ONLY, img->size*sizeof(RGB));
             cl::Buffer buf_R = cl::Buffer(context, CL_MEM_WRITE_ONLY, 256*sizeof(uint32_t));
             cl::Buffer buf_G = cl::Buffer(context, CL_MEM_WRITE_ONLY, 256*sizeof(uint32_t));
             cl::Buffer buf_B = cl::Buffer(context, CL_MEM_WRITE_ONLY, 256*sizeof(uint32_t));
+            uint32_t R[256];
+            uint32_t G[256];
+            uint32_t B[256];
 
-            // move data to the buffer
-            queue.enqueueWriteBuffer(buf_img, CL_FALSE, 0, sizeof(Image)+img->size*sizeof(RGB), img);
+            // move data to the device
+            queue.enqueueWriteBuffer(buf_data, CL_TRUE, 0, img->size*sizeof(RGB), img->data);
 
             // load kernel code
             std::ifstream kernelFile("histogram.cl");
             std::string kernelCode(std::istreambuf_iterator<char>(kernelFile), (std::istreambuf_iterator<char>()));
-            cl::Program::Sources source(1, std::make_pair(kernelCode.c_str(), kernelCode.length()));
+            cl::Program::Sources source;
+            source.push_back({kernelCode.c_str(), kernelCode.length()});
             
             // make & build
-            cl::Program kernel = cl::Program(context, kernelCode);
-            kernel.build(devices);
-            cl::Kernel histogram_kernel(kernel, "histogram_kernel");
+            cl::Program program = cl::Program(context, source);
+            // program.build(devices);
+            if (program.build({default_device}) != CL_SUCCESS) {
+                std::cout << "Error building: " << program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(default_device) << std::endl;
+                exit(1);
+            }
+            cl::Kernel histogram_kernel(program, "hist_count");
 
             // arguments
-            histogram_kernel.setArg(0, buf_img);
+            histogram_kernel.setArg(0, buf_data);
             histogram_kernel.setArg(1, buf_R);
             histogram_kernel.setArg(2, buf_G);
             histogram_kernel.setArg(3, buf_B);
             
             // execute
-            // cl::NDRange global()
+            cl::NDRange global(img->size);
+            cl::NDRange local(64);
+            queue.enqueueNDRangeKernel(histogram_kernel, cl::NullRange, global, local);
+            queue.finish();
 
+            // move data from device to host
+            queue.enqueueReadBuffer(buf_R, CL_TRUE, 0, 256*sizeof(uint32_t), R);
+            queue.enqueueReadBuffer(buf_G, CL_TRUE, 0, 256*sizeof(uint32_t), G);
+            queue.enqueueReadBuffer(buf_B, CL_TRUE, 0, 256*sizeof(uint32_t), B);
 
-
-
-            uint32_t R[256];
-            uint32_t G[256];
-            uint32_t B[256];
-
-            histogram(img,R,G,B);
+            // histogram(img,R,G,B);
 
             int max = 0;
             for(int i=0;i<256;i++){
