@@ -7,6 +7,7 @@
 
 //#include <CL/cl.hpp>
 #include <CL/cl.h>
+#include <cstring>
 //#define DUMP_RGB true
 
 const char *kernelSource =                                       "\n" \
@@ -57,7 +58,7 @@ typedef struct
     RGB *data;
 } Image;
 
-Image *readbmp(const char *filename)
+Image *readbmp(const char *filename, RGB* buf_data_ptr)
 {
     std::ifstream bmp(filename, std::ios::binary);
     char header[54];
@@ -79,7 +80,8 @@ Image *readbmp(const char *filename)
     ret->height = h;
     ret->weight = w;
     ret->size = w * h;
-    ret->data = new RGB[w * h]{};
+//    ret->data = new RGB[w * h]{};
+    ret->data = buf_data_ptr;
     for (int i = 0; i < ret->size; i++)
     {
         bmp.read((char *)&ret->data[i], depth / 8);
@@ -87,17 +89,17 @@ Image *readbmp(const char *filename)
     return ret;
 }
 
-//int getImageSize(const char *filename)
-//{
-//    std::ifstream bmp(filename, std::ios::binary);
-//    char header[54];
-//    bmp.read(header, 54);
-//    uint32_t size = *(int *)&header[2];
-//    uint32_t offset = *(int *)&header[10];
-//    uint32_t w = *(int *)&header[18];
-//    uint32_t h = *(int *)&header[22];
-//    return w*h;
-//}
+int getImageSize(const char *filename)
+{
+    std::ifstream bmp(filename, std::ios::binary);
+    char header[54];
+    bmp.read(header, 54);
+    uint32_t size = *(int *)&header[2];
+    uint32_t offset = *(int *)&header[10];
+    uint32_t w = *(int *)&header[18];
+    uint32_t h = *(int *)&header[22];
+    return w*h;
+}
 
 int writebmp(const char *filename, Image *img)
 {
@@ -220,8 +222,8 @@ int main(int argc, char *argv[])
         queue = clCreateCommandQueue(context, device_id, 0, &err);
 
         // load kernel code
-        std::ifstream kernelFile("histogram.cl");
-        std::string kernelCode(std::istreambuf_iterator<char>(kernelFile), (std::istreambuf_iterator<char>()));
+//        std::ifstream kernelFile("histogram.cl");
+//        std::string kernelCode(std::istreambuf_iterator<char>(kernelFile), (std::istreambuf_iterator<char>()));
 //        program = clCreateProgramWithSource(context, 1, (const char **)kernelCode.c_str(), NULL, &err);
         program = clCreateProgramWithSource(context, 1,
                                             (const char **) & kernelSource, NULL, &err);
@@ -245,15 +247,42 @@ int main(int argc, char *argv[])
             uint32_t R[256];
             uint32_t G[256];
             uint32_t B[256];
-            Image *img = readbmp(filename);
-            std::cout << img->weight << ":" << img->height << "\n";
+
+            int img_size = getImageSize(filename);
 
             // memory buffers
-            cl_mem buf_data = clCreateBuffer(context, CL_MEM_READ_ONLY, img->size*sizeof(RGB), NULL, NULL);
+            // host
+            cl_mem host_buf_data = clCreateBuffer(context,
+                                                  CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, img_size*sizeof(RGB), NULL, NULL);
+            cl_mem host_buf_R = clCreateBuffer(context,
+                                               CL_MEM_WRITE_ONLY | CL_MEM_ALLOC_HOST_PTR, 256*sizeof(uint32_t), NULL, NULL);
+            cl_mem host_buf_G = clCreateBuffer(context,
+                                               CL_MEM_WRITE_ONLY | CL_MEM_ALLOC_HOST_PTR, 256*sizeof(uint32_t), NULL, NULL);
+            cl_mem host_buf_B = clCreateBuffer(context,
+                                               CL_MEM_WRITE_ONLY | CL_MEM_ALLOC_HOST_PTR, 256*sizeof(uint32_t), NULL, NULL);
+            // device
+            cl_mem buf_data = clCreateBuffer(context, CL_MEM_READ_ONLY, img_size*sizeof(RGB), NULL, NULL);
             cl_mem buf_R = clCreateBuffer(context, CL_MEM_WRITE_ONLY, 256*sizeof(uint32_t), NULL, NULL);
             cl_mem buf_G = clCreateBuffer(context, CL_MEM_WRITE_ONLY, 256*sizeof(uint32_t), NULL, NULL);
             cl_mem buf_B = clCreateBuffer(context, CL_MEM_WRITE_ONLY, 256*sizeof(uint32_t), NULL, NULL);
-            
+
+            // map memory
+            RGB* buf_data_ptr = (RGB*) clEnqueueMapBuffer(queue, host_buf_data, CL_TRUE,
+                                                          CL_MAP_WRITE, 0, img_size*sizeof(RGB), 0, NULL, NULL, NULL);
+            uint32_t* buf_R_ptr = (uint32_t *) clEnqueueMapBuffer(queue, host_buf_R, CL_TRUE,
+                                                                  CL_MAP_READ, 0, 256* sizeof(uint32_t), 0, NULL, NULL, NULL);
+            uint32_t* buf_G_ptr = (uint32_t *) clEnqueueMapBuffer(queue, host_buf_G, CL_TRUE,
+                                                                  CL_MAP_READ, 0, 256* sizeof(uint32_t), 0, NULL, NULL, NULL);
+            uint32_t* buf_B_ptr = (uint32_t *) clEnqueueMapBuffer(queue, host_buf_B, CL_TRUE,
+                                                                  CL_MAP_READ, 0, 256* sizeof(uint32_t), 0, NULL, NULL, NULL);
+
+            Image *img = readbmp(filename, buf_data_ptr);
+            std::cout << img->weight << ":" << img->height << "\n";
+
+            memset(buf_R_ptr, 0, 256);
+            memset(buf_G_ptr, 0, 256);
+            memset(buf_B_ptr, 0, 256);
+
             cl_uint z = 0;
             clEnqueueFillBuffer(queue, buf_R, &z, sizeof(z), 0, 256*sizeof(uint32_t), 0, NULL, NULL);
             clEnqueueFillBuffer(queue, buf_G, &z, sizeof(z), 0, 256*sizeof(uint32_t), 0, NULL, NULL);
@@ -261,18 +290,10 @@ int main(int argc, char *argv[])
             
 
             // move data to the device
-            clEnqueueWriteBuffer(queue, buf_data, CL_TRUE, 0, img->size*sizeof(RGB), img->data, 0, NULL, NULL);
+//            clEnqueueWriteBuffer(queue, buf_data, CL_TRUE, 0, img->size*sizeof(RGB), img->data, 0, NULL, NULL);
+            clEnqueueWriteBuffer(queue, buf_data, CL_TRUE, 0, img_size*sizeof(RGB), img->data, 0, NULL, NULL);
             // queue.enqueueWriteBuffer(buf_data, CL_TRUE, 0, img->size*sizeof(RGB), img->data);
 
-
-            
-            // cl::Program program = cl::Program(context, source);
-            // program.build(devices);
-            // if (program.build({default_device}) != CL_SUCCESS) {
-            //     std::cout << "Error building: " << program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(default_device) << std::endl;
-            //     exit(1);
-            // }
-            // cl::Kernel histogram_kernel(program, "hist_count");
 
             // arguments
             clSetKernelArg(kernel, 0, sizeof(cl_mem), &buf_data);
@@ -288,20 +309,24 @@ int main(int argc, char *argv[])
             clFinish(queue);
 
             // move data from device to host
-            clEnqueueReadBuffer(queue, buf_R, CL_TRUE, 0, 256*sizeof(uint32_t), R, 0, NULL, NULL);
-            clEnqueueReadBuffer(queue, buf_G, CL_TRUE, 0, 256*sizeof(uint32_t), G, 0, NULL, NULL);
-            clEnqueueReadBuffer(queue, buf_B, CL_TRUE, 0, 256*sizeof(uint32_t), B, 0, NULL, NULL);
+//            clEnqueueReadBuffer(queue, buf_R, CL_TRUE, 0, 256*sizeof(uint32_t), R, 0, NULL, NULL);
+//            clEnqueueReadBuffer(queue, buf_G, CL_TRUE, 0, 256*sizeof(uint32_t), G, 0, NULL, NULL);
+//            clEnqueueReadBuffer(queue, buf_B, CL_TRUE, 0, 256*sizeof(uint32_t), B, 0, NULL, NULL);
+
+            clEnqueueReadBuffer(queue, buf_R, CL_TRUE, 0, 256*sizeof(uint32_t), buf_R_ptr, 0, NULL, NULL);
+            clEnqueueReadBuffer(queue, buf_G, CL_TRUE, 0, 256*sizeof(uint32_t), buf_G_ptr, 0, NULL, NULL);
+            clEnqueueReadBuffer(queue, buf_B, CL_TRUE, 0, 256*sizeof(uint32_t), buf_B_ptr, 0, NULL, NULL);
             clFinish(queue);
 
             #ifdef DUMP_RGB
-            dump_RGB(R, G, B);
+            dump_RGB(buf_R_ptr, buf_G_ptr, buf_B_ptr);
             #endif
 
             int max = 0;
             for(int i=0;i<256;i++){
-                max = R[i] > max ? R[i] : max;
-                max = G[i] > max ? G[i] : max;
-                max = B[i] > max ? B[i] : max;
+                max = buf_R_ptr[i] > max ? buf_R_ptr[i] : max;
+                max = buf_G_ptr[i] > max ? buf_G_ptr[i] : max;
+                max = buf_B_ptr[i] > max ? buf_B_ptr[i] : max;
             }
 
             Image *ret = new Image();
@@ -313,11 +338,11 @@ int main(int argc, char *argv[])
 
             for(int i=0;i<ret->height;i++){
                 for(int j=0;j<256;j++){
-                    if(R[j]*256/max > i)
+                    if(buf_R_ptr[j]*256/max > i)
                         ret->data[256*i+j].R = 255;
-                    if(G[j]*256/max > i)
+                    if(buf_G_ptr[j]*256/max > i)
                         ret->data[256*i+j].G = 255;
-                    if(B[j]*256/max > i)
+                    if(buf_B_ptr[j]*256/max > i)
                         ret->data[256*i+j].B = 255;
                 }
             }
