@@ -5,10 +5,11 @@
 #include <time.h>
 #include <math.h>
 
-//#include <CL/cl.hpp>
 #include <CL/cl.h>
 #include <cstring>
+
 //#define DUMP_RGB true
+#define DISPLAY_TIME true
 
 const char *kernelSource =                                       "\n" \
 "typedef struct \n" \
@@ -80,7 +81,6 @@ Image *readbmp(const char *filename, RGB* buf_data_ptr)
     ret->height = h;
     ret->weight = w;
     ret->size = w * h;
-//    ret->data = new RGB[w * h]{};
     ret->data = buf_data_ptr;
     for (int i = 0; i < ret->size; i++)
     {
@@ -222,11 +222,7 @@ int main(int argc, char *argv[])
         queue = clCreateCommandQueue(context, device_id, 0, &err);
 
         // load kernel code
-//        std::ifstream kernelFile("histogram.cl");
-//        std::string kernelCode(std::istreambuf_iterator<char>(kernelFile), (std::istreambuf_iterator<char>()));
-//        program = clCreateProgramWithSource(context, 1, (const char **)kernelCode.c_str(), NULL, &err);
-        program = clCreateProgramWithSource(context, 1,
-                                            (const char **) & kernelSource, NULL, &err);
+        program = clCreateProgramWithSource(context, 1, (const char **) & kernelSource, NULL, &err);
 
         // make & build
         clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
@@ -356,14 +352,21 @@ int main(int argc, char *argv[])
             clReleaseMemObject(buf_R);
             clReleaseMemObject(buf_G);
             clReleaseMemObject(buf_B);
+            clReleaseMemObject(host_buf_data);
+            clReleaseMemObject(host_buf_R);
+            clReleaseMemObject(host_buf_G);
+            clReleaseMemObject(host_buf_B);
         }
         clReleaseProgram(program);
         clReleaseKernel(kernel);
         clReleaseCommandQueue(queue);
         clReleaseContext(context);
+
+        #ifdef DISPLAY_TIME
         clock_t end = clock();  
         double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
         printf("time: %4f sec\n", time_spent);
+        #endif
     }else{
         printf("Usage: ./hist <img.bmp> [img2.bmp ...]\n");
     }
