@@ -1,5 +1,7 @@
 # Parallel Programming
 
+Labs of the course "Parallel Programming" @ NCTU CS 2019 fall.
+
 ## 1. Pthreads
 Estimate π by Monte Carlo method.
 
